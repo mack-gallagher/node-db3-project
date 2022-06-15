@@ -1,3 +1,5 @@
+const db = require('../../data/db-config');
+
 function find() { // EXERCISE A
   /*
     1A- Study the SQL query below running it in SQLite Studio against `data/schemes.db3`.
@@ -14,7 +16,34 @@ function find() { // EXERCISE A
 
     2A- When you have a grasp on the query go ahead and build it in Knex.
     Return from this function the resulting dataset.
-  */
+  */ 
+
+  return db('schemes')
+    .select('*')
+    .count('steps.step_id AS number_of_steps')
+    .leftJoin('steps','schemes.scheme_id','=','steps.scheme_id')
+    .groupBy('steps.scheme_id')
+    .orderBy('steps.scheme_id', 'asc')
+    .then(schemes => {
+
+      let k = 0;
+      for (let i = 0; i < schemes.length; i++) {
+        if (schemes[i].scheme_id > k) {
+          k = schemes[i].scheme_id; 
+        }
+      }
+
+      k++;
+
+      for (let i = 0; i < schemes.length; i++) {
+        if (!schemes[i].scheme_id) {
+          schemes[i].scheme_id = k;
+          k++;
+        }
+      }
+
+      return schemes.sort((a,b) => { return a.scheme_id - b.scheme_id });
+    })
 }
 
 function findById(scheme_id) { // EXERCISE B
@@ -83,6 +112,30 @@ function findById(scheme_id) { // EXERCISE B
         "steps": []
       }
   */
+
+  return db('schemes')
+    .select('*')
+    .select('steps.*')
+    .leftJoin('steps','schemes.scheme_id','=','steps.scheme_id')
+    .where('schemes.scheme_id',scheme_id)
+    .then(result => {
+      const ans = {};
+      ans.scheme_id = parseInt(scheme_id);
+      ans.scheme_name = result[0].scheme_name;
+      ans.steps = [];
+      let new_part = {};
+      for (let i = 0; i < result.length; i++) {
+        if (!result[i].step_id) break;
+        new_part.step_id = parseInt(result[i].step_id);
+        new_part.instructions = result[i].instructions;
+        new_part.step_number = parseInt(result[i].step_number);
+        ans.steps.push(new_part);
+        new_part = {};
+      }
+      ans.steps = ans.steps.sort((a,b) => a.step_number-b.step_number);
+      return ans;
+    })
+
 }
 
 function findSteps(scheme_id) { // EXERCISE C
@@ -106,12 +159,35 @@ function findSteps(scheme_id) { // EXERCISE C
         }
       ]
   */
+
+  return db('schemes')
+    .select('schemes.scheme_name')
+    .select('steps.step_id','steps.step_number','steps.instructions')
+    .join('steps','schemes.scheme_id','=','steps.scheme_id')
+    .where({ 'schemes.scheme_id': scheme_id })
+    .orderBy('steps.step_number','asc')
+    .then(result => {
+      for (let i = 0; i < result.length; i++) {
+        result[i].step_number = parseInt(result[i].step_number);
+        result[i].step_id = parseInt(result[i].step_number);
+      }
+      return result;
+    });
+
 }
 
 function add(scheme) { // EXERCISE D
   /*
     1D- This function creates a new scheme and resolves to _the newly created scheme_.
   */
+
+  return db('schemes')
+    .insert(scheme)
+    .then(ids => {
+      return db('schemes')
+              .where({ scheme_id: ids[0] })
+              .first();
+    })
 }
 
 function addStep(scheme_id, step) { // EXERCISE E
@@ -120,6 +196,37 @@ function addStep(scheme_id, step) { // EXERCISE E
     and resolves to _all the steps_ belonging to the given `scheme_id`,
     including the newly created one.
   */
+
+  let max_step_number = 0;
+
+  db('steps')
+    .where({ scheme_id })
+    .then(result => {
+      for (let i = 0; i < result.length; i++) {
+        if (result[i].step_number > max_step_number) {
+          max_step_number = result[i].step_number;
+        }
+      }
+    })
+
+  max_step_number++;
+
+  const our_step = {};
+  our_step.scheme_id = parseInt(scheme_id);
+  if (!step.hasOwnProperty('step_number')) {
+    our_step.step_number = max_step_number;
+  } else {
+    our_step.step_number = step.step_number;
+  }
+  our_step.instructions = step.instructions;
+
+  return db('steps')
+    .insert(our_step)
+    .then(ids => {
+      return db('steps')
+        .where({ scheme_id })
+        .orderBy('step_number');
+    })
 }
 
 module.exports = {
